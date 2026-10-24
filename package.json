@@ -1,0 +1,24 @@
+{
+  "name": "pi-extensions-monorepo",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "packageManager": "nub@0.9.7",
+  "devEngines": {
+    "packageManager": {
+      "name": "nub",
+      "version": "^0.9.7",
+      "onFail": "ignore"
+    }
+  },
+  "workspaces": ["extensions/*"],
+  "scripts": {
+    "typecheck": "tsc --noEmit --project tsconfig.json",
+    "test": "node --experimental-strip-types --test extensions/*/test/*.test.ts",
+    "test:watch": "node --experimental-strip-types --test --watch extensions/*/test/*.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^26",
+    "typescript": "^7"
+  }
+}

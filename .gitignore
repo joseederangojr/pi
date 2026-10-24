@@ -1,0 +1,8 @@
+node_modules
+.env*
+!.env.example
+*.log
+.DS_Store
+*.tsbuildinfo
+.pi
+!.pi/skills
