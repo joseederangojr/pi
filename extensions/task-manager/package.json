@@ -1,8 +1,11 @@
 {
-  "name": "@pi-ext/hello",
+  "name": "@pi-ext/task-manager",
   "version": "0.0.1",
   "private": true,
   "type": "module",
+  "pi": {
+    "extensions": ["./index.ts"]
+  },
   "scripts": {
     "test": "node --experimental-strip-types --test test/*.test.ts"
   }

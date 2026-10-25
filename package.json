@@ -11,14 +11,19 @@
       "onFail": "ignore"
     }
   },
-  "workspaces": ["extensions/*"],
+  "workspaces": [
+    "extensions/*"
+  ],
   "scripts": {
     "typecheck": "tsc --noEmit --project tsconfig.json",
     "test": "node --experimental-strip-types --test extensions/*/test/*.test.ts",
     "test:watch": "node --experimental-strip-types --test --watch extensions/*/test/*.test.ts"
   },
   "devDependencies": {
+    "@earendil-works/pi-coding-agent": "1.4.0",
+    "@earendil-works/pi-tui": "1.4.0",
     "@types/node": "^26",
+    "typebox": "1.3.27",
     "typescript": "^7"
   }
 }

@@ -5,4 +5,10 @@ node_modules
 .DS_Store
 *.tsbuildinfo
 .pi
+# Task manager local state (never commit)
+task-manager-state.json
+.pi/task-manager-state.json
+extensions/**/task-manager-state.json
+extensions/**/.task-manager/
+extensions/task-manager/examples/dummy-snapshot.json
 !.pi/skills
