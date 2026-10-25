@@ -2,6 +2,25 @@
 
 Simple Pi task manager extension with always-on widget UI.
 
+## Install
+
+```sh
+pi install ./extensions/task-manager
+```
+
+Or load locally:
+
+```sh
+pi --extension ./extensions/task-manager/index.ts
+```
+
+## Usage
+
+- `/tasks` opens an interactive menu (view/create/clear/settings).
+- Create tasks via the menu or the `task_create` tool; they auto-start when unblocked.
+- `/tasks peek <id>` (or menu → View → Peek) streams live activity.
+- `/tasks help` shows commands and hotkeys.
+
 Tools:
 - `task_create` (supports `parent_id` for session ancestry)
 - `task_list`
