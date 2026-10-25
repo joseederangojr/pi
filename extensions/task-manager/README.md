@@ -1,6 +1,6 @@
 # @pi-ext/task-manager
 
-Simple Pi task manager extension with always-on widget UI.
+Pi task manager extension: background workers, dependency DAG, blockers, inspect/peek with streaming, interactive menu, usage metrics, and session-scoped persistence.
 
 ## Install
 
@@ -18,7 +18,7 @@ pi --extension ./extensions/task-manager/index.ts
 
 - `/tasks` opens an interactive menu (view/create/clear/settings).
 - Create tasks via the menu or the `task_create` tool; they auto-start when unblocked.
-- `/tasks peek <id>` (or menu → View → Peek) streams live activity.
+- `/tasks peek <id>` (or menu → View → Peek) streams live activity in a bordered popup.
 - `/tasks help` shows commands and hotkeys.
 
 Tools:
@@ -27,22 +27,20 @@ Tools:
 - `task_update`
   - supports `lane`, `depends_on`, `blocker`, `clear_blocker`, `blocked_by`, `clear_blocked_by`, `input_tokens_delta`, `output_tokens_delta`, `cost_usd_delta`
   - when status moves to `done`, a session summary is attached and emitted as `task-manager:merge-summary`
-- `task_peek` (inspect task without changing state)
+- `task_peek` (inspect task without changing state; streams activity)
+- `task_steer` (send a message / answer a question to a running worker)
 
 Widget:
-- shown by default
-- selectable list (`j`/`k` via `/tasks down` and `/tasks up`)
-- shows blockers, lane/dependency shape, duration, input/output tokens, and cost
-- header includes `ready` count for parallel-runnable tasks
+- shown by default, above the editor
+- compact list: status icon, task id, title, blocked/stuck flags, duration, tokens, cost
+- header: `Tasks (N) — X running, Y pending, ...`
+- in-progress rows show a spinner (⠋⠙⠹...); done rows are struck through and sorted to the bottom
+- refreshes every 150ms
 
 Command:
 - `/tasks` (interactive menu: view/create/clear/settings)
 - `/tasks toggle` (show/hide widget)
 - `/tasks clear` (clear all tasks, no confirmation)
-- `/tasks focus` (focus widget)
-- `/tasks overlay` (open interactive overlay)
-- `/tasks up` / `/tasks down` (move selection)
-- `/tasks select <task-id>`
 - `/tasks force-start` (starts selected task; clears blocker)
 - `/tasks stop` (sets selected task to pending)
 - `/tasks done [note]` (marks selected task done and injects session summary)
@@ -53,7 +51,6 @@ Command:
 - `/tasks tree` (shows dependency tree)
 - `/tasks list` / `/tasks parallel`
 - `/tasks run` (start all ready tasks)
-- `/tasks ui bottom|show|hide`
 - `/tasks restart` / `r` (re-run a task after crash/interruption)
 - `/tasks pause` / `P` (pause a running worker; resumable)
 - `/tasks steer` / `m` (steer a running worker)
@@ -61,14 +58,23 @@ Command:
 - `/tasks export` (write tasks.md)
 - `/tasks help` (hotkeys and commands)
 
+Peek popup:
+- bordered box, expanded by default (90% width/height)
+- streams activity: thinking indicator, tool calls (compact, with code changes), steer messages, wrapped assistant responses
+- vim-like modes: NORMAL (default) / INSERT (`i` to enter, `Esc` to exit)
+- normal mode keys: `s` start, `f` force, `p` pause, `x` stop, `r` restart, `d` remove, `↑/↓` scroll, `PgUp/PgDn`, `End` tail, `Esc` close
+- actions require `y` confirmation (any other key cancels)
+- scrollable activity log; stays open after task completes
+
 Behavior:
 - Tasks run in the background by default; dispatch returns immediately.
 - Children auto-start when their parent and all dependencies finish, inheriting the parent session context and model.
-- `/tasks help` documents hotkeys; the widget body stays clean.
+- Tasks can ask questions mid-flight via `task_question`; main agent answers autonomously via `task_steer`.
+- `/tasks help` documents hotkeys.
 
 State persists as branch custom entries (`task-manager:snapshot`); each session has its own tasks. A mirror is written to `.pi/task-manager-state.json` (gitignored) for other extensions.
 
-Note: workers inherit auth/models from files under the agent dir; runtime-registered providers/virtual models from the main session are not propagated (M8). Forked context is trimmed to the last 80 entries to avoid oversized payloads.
+Note: workers inherit auth/models from files under the agent dir; runtime-registered providers/virtual models from the main session are not propagated. Forked context is trimmed to the last 80 entries to avoid oversized payloads.
 Live state is emitted as `task-manager:state` for other extensions to subscribe to.
 Tool failures (e.g. bash timeouts) are recorded as task notes.
 Done-task summary merges are emitted as `task-manager:merge-summary` entries for main-tree ingestion.
