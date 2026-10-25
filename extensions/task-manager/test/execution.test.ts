@@ -116,9 +116,7 @@ test("pause suspends worker without abandoning task", async () => {
   await h.tool("task_create", { title: "T1" });
   await h.tool("task_update", { task_id: "task-1", status: "in_progress" });
   await h.emit("agent_settled");
-  await h.command("pause");
-  // confirm pause action
-  await h.command("confirm");
+  await h.command("pause task-1");
   assert.equal(session.aborted, true);
   assert.match(textOf(await h.tool("task_list", {})), /task-1 \[paused\]/);
 });

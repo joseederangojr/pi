@@ -59,7 +59,9 @@ interface Run {
 /** Capture the finalized branch in memory, not a possibly unflushed main-session file. */
 export function captureTaskFork(ctx: ExtensionContext, thinkingLevel: TaskFork["thinkingLevel"]): TaskFork {
   if (!ctx.model) throw new Error("Select a model before starting tasks.");
-  const entries = structuredClone(ctx.sessionManager.getBranch());
+  const rawEntries = ctx.sessionManager.getBranch();
+  const trimmed = rawEntries.length > 80 ? rawEntries.slice(-80) : rawEntries;
+  const entries = structuredClone(trimmed);
   if (hasUnresolvedToolCalls(entries)) throw new Error("Waiting for the current tool calls to finish.");
   return {
     cwd: ctx.cwd,
@@ -80,7 +82,9 @@ export function captureTaskForkFromSession(
 ): TaskFork {
   if (!parentTask.sessionFile) throw new Error(`Parent task ${parentTask.id} has no saved session.`);
   const manager = SessionManager.open(parentTask.sessionFile);
-  const entries = structuredClone(manager.getBranch());
+  const rawEntries = manager.getBranch();
+  const trimmed = rawEntries.length > 80 ? rawEntries.slice(-80) : rawEntries;
+  const entries = structuredClone(trimmed);
   if (hasUnresolvedToolCalls(entries)) throw new Error("Parent session still has unresolved tool calls.");
   return {
     cwd: manager.getCwd(),

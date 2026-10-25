@@ -33,13 +33,11 @@ export function registerTaskManager(pi: ExtensionAPI, workerFactory?: WorkerFact
   let context: ExtensionContext | undefined;
   let sessionId: string | undefined;
   let visible = true;
-  let focused = false;
   let widgetFrame = 0;
   let widgetRegistered = false;
   let widgetTui: any;
   let popupOpen = false;
   let placement: "aboveEditor" | "belowEditor" = "aboveEditor";
-  let selected: string | undefined;
   let pending: { action: Action; taskId: string | undefined } | undefined;
   const pendingQuestions = new Map<string, (answer: string) => void>();
   let timer: ReturnType<typeof setInterval> | undefined;
@@ -133,27 +131,22 @@ export function registerTaskManager(pi: ExtensionAPI, workerFactory?: WorkerFact
     if (!context) return;
     const state = store.getState();
     const tasks = listTasksTreeOrder(state);
-    if (!selected || !state.tasks[selected]) selected = tasks[0]?.id;
     context.ui.setStatus("task-manager", `tasks ${tasks.filter((task) => task.status === "in_progress").length} running · ${listBlockedTasks(state).length} blocked`);
     if (!visible) {
       if (widgetRegistered) { context.ui.setWidget("task-manager", undefined); widgetRegistered = false; widgetTui = undefined; }
       return;
     }
     widgetFrame = (widgetFrame + 1) % 1000;
-    const focusedNow = focused;
     if (!widgetRegistered) {
       context.ui.setWidget("task-manager", (tui: any, _theme: any) => {
         widgetTui = tui;
         return {
           render: (width: number) => {
             const s = store.getState();
-            const ts = listTasksTreeOrder(s);
-            if (!selected || !s.tasks[selected]) selected = ts[0]?.id;
             const lines = formatTaskWidget(s, {
-              selectedTaskId: selected,
+              selectedTaskId: undefined,
               pendingConfirmation: pending ? `${pending.action}${pending.taskId ? ` ${pending.taskId}` : ""}` : undefined,
             }, 10, new Date().toISOString(), widgetFrame);
-            if (focusedNow && lines.length > 0) lines[0] += " [focused]";
             return lines.map((line: string) => truncateToWidth(line, width));
           },
           invalidate() {},
@@ -344,7 +337,6 @@ export function registerTaskManager(pi: ExtensionAPI, workerFactory?: WorkerFact
     timer = undefined;
     detachInput?.();
     detachInput = undefined;
-    focused = false;
     pending = undefined;
     if (widgetRegistered) { try { context?.ui.setWidget("task-manager", undefined); } catch {} widgetRegistered = false; widgetTui = undefined; }
   }
@@ -394,15 +386,6 @@ export function registerTaskManager(pi: ExtensionAPI, workerFactory?: WorkerFact
     const guidance = `\n\n# Task Manager\n\nYou are an intelligent task manager responsible for analyzing user requests and breaking complex work into actionable, dependency-aware microtasks. Your responsibility is planning, not execution.\n\n## Workflow\n\n1. Analyze: Identify the objective, requirements, constraints, deliverables, and expected outcomes.\n2. Assess: Determine whether decomposition is necessary. Keep simple requests as single tasks or answer directly without creating tasks.\n3. Decompose: Split complex work into small, cohesive, independently verifiable tasks.\n4. Organize: Group related tasks when useful. Avoid unnecessary hierarchy.\n5. Resolve Dependencies: Identify blocking relationships, parallelizable tasks, and potential execution conflicts.\n6. Sequence: Arrange tasks in dependency-aware execution waves.\n7. Validate: Ensure complete requirement coverage, clear acceptance criteria, and a valid dependency graph.\n\n## Microtask Rules\n\nEach task must:\n- Have one clear responsibility and measurable outcome.\n- Be independently executable and verifiable.\n- Include sufficient context without requiring the original request.\n- Define concrete deliverables and acceptance criteria.\n- Declare blocking dependencies explicitly (use depends_on).\n- Avoid overlapping ownership with other tasks.\n- Be small enough for focused execution without excessive fragmentation.\n- Not split tightly coupled operations unless doing so improves execution, delegation, or verification.\n\n## Dependency Rules\n\n- Model dependencies as a directed acyclic graph (DAG) via depends_on.\n- Never introduce artificial dependencies.\n- Allow independent tasks to execute concurrently (tasks run in the background).\n- Identify shared resources that could cause conflicts.\n- Schedule integration after its prerequisites.\n- Group ready tasks into execution waves without unnecessary synchronization barriers.\n\n## Task Structure (task_create / task_update)\n\nEach task contains:\n- ID: auto-assigned (task-N).\n- Title: Short, action-oriented description.\n- Description: Specific scope and execution instructions.\n- Deliverable: Concrete expected output.\n- Acceptance Criteria: Verifiable completion conditions.\n- Dependencies: Blocking task IDs via depends_on, or none.\n- Status: Pending by default; use task_update status=in_progress to start.\n- Optional: lane, model, parent_id, blocker/clear_blocker, blocked_by/clear_blocked_by.\n\nInclude priority, grouping, risks, or assumptions only when relevant.\n\n## Rules\n\n- Preserve all user requirements and constraints.\n- Never invent requirements or technical decisions.\n- Avoid vague, redundant, or unnecessarily granular tasks.\n- Do not create separate research, documentation, or testing tasks unless justified.\n- Ask for clarification only when missing information blocks meaningful planning.\n- When updating plans, preserve valid tasks, IDs, and statuses; modify only affected tasks.\n- Never claim planned work is completed.\n- Validate coverage, task independence, dependency integrity, and scope before responding.\n\nCore principle: Create the smallest set of independently actionable tasks that fully satisfies the user's request, with enough detail for another agent to execute them without ambiguity.\n\n## Task Manager Actions\n\n- task_create: Create a pending task (title required; supports description, lane, model, background, depends_on, parent_id).\n- task_list: List tasks with optional status filter.\n- task_update: Update metadata or status (pending/in_progress/paused/done); use clear_blocker/clear_blocked_by to unblock; auto-starts when unblocked.\n- task_peek: Inspect a task's state, session, and live output without changes.\n- task_start (via task_update status=in_progress): Forks an independent background session.\n- task_steer: Send a message to a running worker (use this to answer task questions).\n\nWhen a task sends a question (task-manager:question message), answer it autonomously via task_steer unless the question requires user input. If you cannot answer the question yourself, check whether an ask_user_question tool is available and use it to ask the user; after receiving the user\'s answer, you MUST immediately call task_steer with that answer so the worker resumes — do not ask the user to run /tasks steer manually.\n\nIf the request can be answered directly, answer it without creating tasks.`;
     return { systemPrompt: `${event.systemPrompt}${guidance}` };
   });
-  const focusHandler = async (ctx: any) => {
-    visible = true; renderUi();
-    await openTaskOverlay(ctx);
-  };
-  for (const key of [Key.ctrlAlt("up"), Key.ctrlAlt("t")]) {
-    try {
-      pi.registerShortcut(key, { description: "Focus task widget (no popup)", handler: focusHandler });
-    } catch { /* optional */ }
-  }
 
 
   pi.registerTool({
@@ -420,7 +403,6 @@ export function registerTaskManager(pi: ExtensionAPI, workerFactory?: WorkerFact
       if (!title) throw new Error("title is required");
       const model = params.model ?? (!params.depends_on?.length && ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined);
       const created = createTask(store.getState(), title, params.description, now(), params.lane, params.depends_on, model, params.background, params.parent_id);
-      selected = created.task.id;
       pending = undefined;
       commit(created.state);
       // Auto-start if there are no blockers.
@@ -671,7 +653,6 @@ export function registerTaskManager(pi: ExtensionAPI, workerFactory?: WorkerFact
     if (action === "clear-all") {
       await stopAll();
       commit({ tasks: {}, nextId: store.getState().nextId });
-      selected = undefined;
     } else {
       if (!taskId) throw new Error("No task selected.");
       if (action === "start" || action === "force-start") startTask(ctx, taskId, action === "force-start");
@@ -694,12 +675,10 @@ export function registerTaskManager(pi: ExtensionAPI, workerFactory?: WorkerFact
   async function runCommand(args: string, ctx: ExtensionContext): Promise<void> {
     context = ctx;
     const [raw = "", ...rest] = args.trim().split(/\s+/);
-    const aliases: Record<string, string> = { S: "force-start", s: "stop", P: "pause", p: "peek", d: "remove", x: "clear-all", o: "peek", j: "down", k: "up", r: "restart", R: "restart", restart: "restart", pause: "pause", steer: "steer", broadcast: "broadcast", bcast: "broadcast", export: "export", inspect: "peek", delete: "remove", clear: "clear-all", yes: "confirm", no: "cancel", finish: "done", ready: "parallel", fs: "force-start", enter: "peek" };
+    const aliases: Record<string, string> = { S: "force-start", s: "stop", P: "pause", p: "peek", d: "remove", x: "clear-all", o: "peek", r: "restart", R: "restart", restart: "restart", pause: "pause", steer: "steer", broadcast: "broadcast", bcast: "broadcast", export: "export", inspect: "peek", delete: "remove", clear: "clear-all", yes: "confirm", no: "cancel", finish: "done", ready: "parallel", fs: "force-start", enter: "peek" };
     const command = aliases[raw] ?? raw.toLowerCase();
-    if (!command) { focused = true; visible = true; renderUi(); ctx.ui.notify("Task tree focused.", "info"); return; }
-    if (command === "toggle") { visible = !visible; if (!visible) focused = false; renderUi(); return; }
-    if (command === "focus") { focused = true; visible = true; renderUi(); ctx.ui.notify("Task tree focused. Use /tasks up|down|select|peek or Ctrl+Alt+↑ for the overlay.", "info"); return; }
-    if (command === "overlay" || command === "ov") { visible = true; await openTaskOverlay(ctx); return; }
+    if (!command) { visible = true; renderUi(); return; }
+    if (command === "toggle") { visible = !visible; renderUi(); return; }
     if (command === "help" || command === "h") {
       const md = helpMarkdown();
       pi.sendMessage({ customType: "task-manager:help", content: md, display: true }, { triggerTurn: false, deliverAs: "followUp" });
@@ -713,35 +692,30 @@ export function registerTaskManager(pi: ExtensionAPI, workerFactory?: WorkerFact
     if (command === "cancel") { pending = undefined; renderUi(); return; }
     if (["start", "force-start", "stop", "pause", "remove", "clear-all", "restart"].includes(command)) {
       const action = command as Action;
-      const taskId = action === "clear-all" ? undefined : (rest[0] ?? selected);
+      const taskId = action === "clear-all" ? undefined : rest[0];
       if (action !== "clear-all" && !taskId) throw new Error("Task id required. Usage: /tasks <action> <task-id>");
       if (action !== "clear-all" && taskId && !store.getState().tasks[taskId]) throw new Error(`Task not found: ${taskId}`);
       await perform(action, taskId, ctx);
       return;
     }
     pending = undefined;
-    if (command === "up" || command === "down") {
-      const tasks = listTasksTreeOrder(store.getState());
-      const index = Math.max(0, tasks.findIndex((task) => task.id === selected));
-      selected = tasks[Math.max(0, Math.min(tasks.length - 1, index + (command === "up" ? -1 : 1)))]?.id;
-    } else if (command === "select") {
-      if (!rest[0] || !store.getState().tasks[rest[0]]) throw new Error(`Task not found: ${rest[0] ?? ""}`);
-      selected = rest[0];
-    } else if (command === "peek") {
-      const taskId = rest[0] ?? selected;
-      if (!taskId) throw new Error("No task selected.");
+    if (command === "peek") {
+      const taskId = rest[0];
+      if (!taskId || !store.getState().tasks[taskId]) throw new Error("Task id required.");
       await openTaskPopup(ctx, taskId);
     } else if (command === "done") {
-      if (!selected) throw new Error("No task selected.");
-      finishManually(selected, rest.join(" ") || undefined);
+      const taskId = rest[0];
+      if (!taskId || !store.getState().tasks[taskId]) throw new Error("Task id required.");
+      finishManually(taskId, rest.slice(1).join(" ") || undefined);
     } else if (command === "block" || command === "unblock") {
-      if (!selected) throw new Error("No task selected.");
-      if (command === "block" && !rest.length) throw new Error("Usage: /tasks block <reason>");
-      patchTask({ taskId: selected, ...(command === "block" ? { blocker: rest.join(" ") } : { clearBlocker: true }), updatedAt: now() });
+      const taskId = rest[0];
+      if (!taskId || !store.getState().tasks[taskId]) throw new Error("Task id required.");
+      if (command === "block" && !rest.slice(1).length) throw new Error("Usage: /tasks block <task-id> <reason>");
+      patchTask({ taskId, ...(command === "block" ? { blocker: rest.slice(1).join(" ") } : { clearBlocker: true }), updatedAt: now() });
       if (command === "unblock") {
-        const t = selected ? getTask(store.getState(), selected) : undefined;
+        const t = getTask(store.getState(), taskId);
         if (t && t.status === "pending" && !taskBlocker(store.getState(), t) && context) {
-          try { startTask(context, selected); } catch { /* ignore */ }
+          try { startTask(context, taskId); } catch { /* ignore */ }
         }
       }
     } else if (command === "blockers") ctx.ui.notify(formatBlockerSummary(store.getState()), "info");
@@ -759,7 +733,7 @@ export function registerTaskManager(pi: ExtensionAPI, workerFactory?: WorkerFact
       if (!message.trim()) throw new Error("Broadcast message is required.");
       await broadcastTask(message);
     } else if (command === "steer") {
-      const taskId = rest[0] ?? selected;
+      const taskId = rest[0];
       let message = rest.slice(1).join(" ");
       if (!taskId) throw new Error("No task selected.");
       if (!message) message = (await ctx.ui.input("Steer task", `Message for ${taskId}`)) ?? "";
@@ -768,11 +742,6 @@ export function registerTaskManager(pi: ExtensionAPI, workerFactory?: WorkerFact
     }
     else if (command === "run") {
       for (const task of listParallelRunnableTasks(store.getState())) startTask(ctx, task.id);
-    } else if (command === "ui" || command === "u" || command === "b") {
-      const mode = command === "u" ? "top" : command === "b" ? "bottom" : rest[0];
-      if (mode === "bottom") placement = "belowEditor";
-      else if (mode === "show" || mode === "hide") { visible = mode === "show"; if (!visible) focused = false; }
-      else throw new Error("Usage: /tasks ui bottom|show|hide");
     } else throw new Error("Unknown command. Run /tasks help.");
     renderUi();
   }
@@ -874,7 +843,6 @@ export function registerTaskManager(pi: ExtensionAPI, workerFactory?: WorkerFact
     if (!subject) return taskMenu(ctx);
     const description = await ui.input("Task description", "");
     const created = createTask(store.getState(), subject, description || undefined, now());
-    selected = created.task.id;
     commit(created.state);
     try { startTask(ctx, created.task.id); } catch { /* ignore */ }
     return taskMenu(ctx);
@@ -887,69 +855,12 @@ export function registerTaskManager(pi: ExtensionAPI, workerFactory?: WorkerFact
     if (!choice || choice === "← Back") return taskMenu(ctx);
     if (choice.startsWith("Move widget: top")) placement = "aboveEditor";
     else if (choice.startsWith("Move widget: bottom")) placement = "belowEditor";
-    else if (choice.startsWith("Toggle widget visibility")) { visible = !visible; if (!visible) focused = false; }
+    else if (choice.startsWith("Toggle widget visibility")) { visible = !visible; }
     renderUi();
     return settingsMenu(ctx);
   }
 
-  async function openTaskOverlay(ctx: ExtensionContext): Promise<void> {
-    const list0 = listTasksTreeOrder(store.getState());
-    let sel = selected && store.getState().tasks[selected] ? selected : list0[0]?.id;
 
-    await ctx.ui.custom<void>((tui, theme, _kb, done) => {
-      const close = () => { if (streamTimer) clearInterval(streamTimer); streamTimer = undefined; done(); };
-      let streamTimer: ReturnType<typeof setInterval> | undefined = setInterval(() => { tui.requestRender(); }, 250);
-      if (streamTimer) streamTimer.unref();
-      const runAction = (action: () => Promise<void>) => { void action().then(() => tui.requestRender()).catch((error: unknown) => ctx.ui.notify(errorText(error), "error")); };
-      const component = {
-        render(width: number): string[] {
-          const lines: string[] = [];
-          const state = store.getState();
-          const list = listTasksTreeOrder(state);
-          lines.push(theme.fg("accent", `Task Tree (${list.length})`));
-          lines.push(theme.fg("muted", "↑/↓ j/k navigate | Enter/o peek | s force-start | x stop | p pause | d remove | Esc close"));
-          lines.push("");
-          for (const task of list) {
-            const marker = task.id === sel ? ">" : " ";
-            const icon = task.status === "in_progress" ? "▶" : task.status === "paused" ? "⏸" : task.status === "done" ? "✓" : "○";
-            const blocker = taskBlocker(state, task) ? " 🚫" : "";
-            lines.push(truncateToWidth(`${marker} ${icon} ${task.id} ${task.title}${blocker}`, width));
-          }
-          if (list.length === 0) lines.push(theme.fg("muted", "(no tasks)"));
-          return lines;
-        },
-        handleInput(data: string) {
-          const list = listTasksTreeOrder(store.getState());
-          const idx = Math.max(0, list.findIndex((t) => t.id === sel));
-          if (matchesKey(data, Key.escape)) { close(); return; }
-          if (matchesKey(data, Key.up) || data === "k") {
-            sel = list[Math.max(0, idx - 1)]?.id ?? sel;
-            selected = sel;
-            tui.requestRender();
-            return;
-          }
-          if (matchesKey(data, Key.down) || data === "j") {
-            sel = list[Math.min(list.length - 1, idx + 1)]?.id ?? sel;
-            selected = sel;
-            tui.requestRender();
-            return;
-          }
-          if (matchesKey(data, Key.enter)) {
-            if (sel) { close(); void openTaskPopup(ctx, sel); }
-            return;
-          }
-          if (data === "s" || data === "S") { if (sel) runAction(() => perform("force-start", sel, ctx)); return; }
-          if (data === "x") { if (sel) runAction(() => perform("stop", sel, ctx)); return; }
-          if (data === "p") { if (sel) runAction(() => perform("pause", sel, ctx)); return; }
-          if (data === "d") { if (sel) runAction(async () => { await perform("remove", sel, ctx); }); return; }
-          if (data === "o") { if (sel) { close(); void openTaskPopup(ctx, sel); } return; }
-        },
-        invalidate() {},
-      };
-      return component;
-    }, { overlay: true, overlayOptions: { anchor: "center", width: "90%", maxHeight: "90%", margin: 1 } });
-    renderUi();
-  }
 }
 
 function now(): string { return new Date().toISOString(); }
@@ -963,10 +874,6 @@ function helpMarkdown(): string {
 |---|---|
 | \`/tasks\` | Interactive menu (view/create/clear/settings) |
 | \`/tasks toggle\` | Show/hide widget |
-| \`/tasks focus\` | Focus widget |
-| \`/tasks overlay\` | Open interactive overlay |
-| \`/tasks up\` / \`/tasks down\` | Move selection |
-| \`/tasks select <id>\` | Select a task |
 
 **Actions**
 | Key/Command | Action |
@@ -999,10 +906,8 @@ function helpMarkdown(): string {
 | \`/tasks steer <id> <msg>\` | Steer a worker |
 | \`/tasks broadcast\` | Steer all workers |
 | \`/tasks export\` | Write tasks.md |
-| \`/tasks ui top|bottom|show|hide\` | Move/toggle widget |
 | \`/tasks help\` | This help |
 
-Hotkey: \`Ctrl+Alt+↑\` focuses widget; \`Ctrl+Alt+T\` alternative.
 `;
 }
 
@@ -1012,7 +917,6 @@ function helpText(): string {
     "/tasks — focus task manager",
     "/tasks toggle — show/hide task manager",
     "/tasks clear — clear all tasks (no confirmation)",
-    "/tasks overlay — open interactive overlay",
     "Ctrl+Alt+↑ focuses the widget (no popup). /tasks overlay opens the popup.",
     "While focused: ↑/Ctrl+Alt+↓/j/k navigate; Enter/o/p peek; S force-start; s stop; P pause; d remove; x clear all; r restart; m steer; b broadcast",
     "(Hotkeys are no longer captured globally; use commands to avoid hijacking editor input.)",
@@ -1020,14 +924,13 @@ function helpText(): string {
     "/tasks steer <task-id> <message> — steer a running worker (also task_steer tool)",
     "Start/stop/remove/clear run immediately; no confirmation required",
     "/tasks start|force-start|stop|remove [task-id] — otherwise acts on selection",
-    "/tasks up|down; /tasks select <task-id>; /tasks peek [task-id]",
+    "/tasks peek [task-id]",
     "/tasks done [note] — manual completion (stop a running worker first)",
     "/tasks block <reason> | unblock | blockers | stuck",
     "/tasks run — start all currently ready tasks concurrently",
     "/tasks tree | list | parallel — show tree, list, or ready tasks",
     "/tasks export — write tasks.md in the current directory",
     "State is mirrored to .pi/task-manager-state.json and emitted as task-manager:state for other extensions",
-    "/tasks ui bottom|show|hide; /tasks u|b — move widget",
     "Tasks inherit the parent task/main model; each worker has a private task-id-hash session",
     "Stuck = no worker activity for 15 minutes; warnings never auto-stop a worker",
   ].join("\n");

@@ -67,6 +67,8 @@ Behavior:
 - `/tasks help` documents hotkeys; the widget body stays clean.
 
 State persists as branch custom entries (`task-manager:snapshot`); each session has its own tasks. A mirror is written to `.pi/task-manager-state.json` (gitignored) for other extensions.
+
+Note: workers inherit auth/models from files under the agent dir; runtime-registered providers/virtual models from the main session are not propagated (M8). Forked context is trimmed to the last 80 entries to avoid oversized payloads.
 Live state is emitted as `task-manager:state` for other extensions to subscribe to.
 Tool failures (e.g. bash timeouts) are recorded as task notes.
 Done-task summary merges are emitted as `task-manager:merge-summary` entries for main-tree ingestion.
