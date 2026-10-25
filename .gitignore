@@ -12,3 +12,7 @@ extensions/**/task-manager-state.json
 extensions/**/.task-manager/
 extensions/task-manager/examples/dummy-snapshot.json
 !.pi/skills
+
+# workmux
+workmux
+.workmux

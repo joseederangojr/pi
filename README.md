@@ -10,5 +10,4 @@ TypeScript monorepo for Pi extensions.
 
 ## extensions
 
-- `extensions/hello`: minimal starter extension.
-- `extensions/task-manager`: simple task manager with always-on widget UI, create/list/update, blockers, inspect/peek, and task usage metrics.
+- `extensions/task-manager`: task manager with background workers, dependency DAG, blockers, inspect/peek with streaming, interactive menu/overlay, usage metrics, and session-scoped persistence.
